@@ -1,0 +1,157 @@
+name: Build Jailbroken (No Jemalloc)
+
+# Builds Reynard-Jailbroken.ipa with jemalloc disabled, fixing the launch
+# crash on libhooker-based jailbreaks (Taurine etc.): Gecko's
+# memory/build/zone.c registers a jemalloc malloc zone during dyld
+# initialization, which corrupts pspawn_payload-stg2.dylib's hook
+# installation and aborts the process in free() before main() runs.
+#
+# Runs daily to pick up new upstream releases, or manually via
+# workflow_dispatch. Publishes the IPA as a release on this fork tagged
+# v<upstream>-nojemalloc. If a release for the latest upstream tag already
+# exists, the run exits early.
+#
+# Runner selection: defaults to GitHub-hosted macos-26. To build on your
+# own Mac instead (faster, more disk/RAM), register it as a self-hosted
+# runner on this repo and set the repository variable CI_RUNNER to
+# "self-hosted" (Settings > Secrets and variables > Actions > Variables).
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream tag to build (blank = latest release)"
+        required: false
+        type: string
+      force:
+        description: "Rebuild even if a release already exists"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_REPO: minh-ton/reynard-browser
+
+jobs:
+  build:
+    runs-on: ${{ vars.CI_RUNNER || 'macos-26' }}
+    timeout-minutes: 360
+    steps:
+      - name: Resolve upstream tag
+        id: meta
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG=$(curl -fsSL "https://api.github.com/repos/$UPSTREAM_REPO/releases/latest" \
+              | python3 -c "import sys,json;print(json.load(sys.stdin)['tag_name'])")
+          fi
+          echo "Resolved upstream tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v${TAG}-nojemalloc" >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing build
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ inputs.force }}" != "true" ] && \
+             gh release view "${{ steps.meta.outputs.release_tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.meta.outputs.release_tag }} already exists; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Free disk space
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          sudo rm -rf /Library/Developer/CoreSimulator || true
+          sudo rm -rf "${ANDROID_HOME:-/usr/local/lib/android}" || true
+          sudo rm -rf /opt/hostedtoolcache/dotnet || true
+          sudo rm -rf /usr/local/Cellar/php* || true
+          df -h /
+
+      - name: Checkout fork (CI scripts)
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/checkout@v4
+
+      - name: Stage fix script
+        if: steps.check.outputs.skip == 'false'
+        run: cp tools/jailbreak/apply-fixes.sh "$RUNNER_TEMP/apply-fixes.sh"
+
+      - name: Fetch and checkout upstream tag
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git remote add upstream "https://github.com/$UPSTREAM_REPO.git" || true
+          git fetch --depth 1 upstream tag "${{ steps.meta.outputs.tag }}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Install dependencies
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          brew install python@3.12 lld ldid cbindgen
+          rustup target add aarch64-apple-ios
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Download Gecko source
+        if: steps.check.outputs.skip == 'false'
+        run: ./tools/development/update-gecko.sh
+
+      - name: Apply Reynard patches
+        if: steps.check.outputs.skip == 'false'
+        run: ./tools/development/apply-patches.sh
+
+      - name: Apply jailbreak fixes
+        if: steps.check.outputs.skip == 'false'
+        run: sh "$RUNNER_TEMP/apply-fixes.sh"
+
+      - name: Show generated mozconfig
+        if: steps.check.outputs.skip == 'false'
+        run: cat engine/firefox/.mozconfig || true
+
+      - name: Build idevice dependencies
+        if: steps.check.outputs.skip == 'false'
+        run: ./tools/development/build-idevice.sh
+
+      - name: Build Gecko
+        if: steps.check.outputs.skip == 'false'
+        run: ./tools/development/build-gecko.sh
+
+      - name: Build app archive
+        if: steps.check.outputs.skip == 'false'
+        run: ./tools/release/build-app.sh
+
+      - name: Create IPAs
+        if: steps.check.outputs.skip == 'false'
+        run: ./tools/release/create-ipa.sh
+
+      - name: Verify jemalloc is disabled
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          MOZGLUE="dist/Reynard/Payload/Reynard.app/Frameworks/libmozglue.dylib"
+          if otool -tV "$MOZGLUE" | grep -q "malloc_zone_register"; then
+            echo "::error::libmozglue.dylib still references malloc_zone_register; --disable-jemalloc did not take effect"
+            exit 1
+          fi
+          echo "Verified: no malloc_zone_register references in libmozglue.dylib"
+
+      - name: Publish release
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          REL="${{ steps.meta.outputs.release_tag }}"
+          IPA="dist/Reynard-Jailbroken-NoJemalloc-$TAG.ipa"
+          cp dist/Reynard-Jailbroken.ipa "$IPA"
+          gh release create "$REL" \
+            --repo "${{ github.repository }}" \
+            --title "Reynard $TAG (Jailbroken, no jemalloc)" \
+            --notes "Reynard $TAG jailbroken build with jemalloc disabled (\`--disable-jemalloc\`). Fixes the launch crash on libhooker-based jailbreaks (Taurine, iOS 14) caused by Gecko's malloc zone takeover conflicting with pspawn_payload-stg2.dylib. Install with Filza + AppSync Unified." \
+            "$IPA"
