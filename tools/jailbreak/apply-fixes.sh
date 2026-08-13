@@ -17,12 +17,17 @@
 #    identity, and create-ipa.sh re-signs everything with ldid anyway.
 #
 # Idempotent: safe to run multiple times.
-# Must be run from the repository root, after update-gecko.sh.
+# Must be run after update-gecko.sh. If invoked from outside the repository
+# (e.g. copied to a temp dir in CI), set REYNARD_ROOT to the repository root.
 
 set -eu
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
+if [ -n "${REYNARD_ROOT:-}" ]; then
+	ROOT_DIR="$REYNARD_ROOT"
+else
+	SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+	ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
+fi
 FIREFOX_DIR="$ROOT_DIR/engine/firefox"
 BUILD_GECKO="$ROOT_DIR/tools/development/build-gecko.sh"
 BUILD_APP="$ROOT_DIR/tools/release/build-app.sh"

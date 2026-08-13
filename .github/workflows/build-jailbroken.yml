@@ -109,11 +109,16 @@ jobs:
 
       - name: Apply jailbreak fixes
         if: steps.check.outputs.skip == 'false'
-        run: sh "$RUNNER_TEMP/apply-fixes.sh"
+        run: REYNARD_ROOT="$GITHUB_WORKSPACE" sh "$RUNNER_TEMP/apply-fixes.sh"
 
-      - name: Show generated mozconfig
+      - name: Verify patches applied
         if: steps.check.outputs.skip == 'false'
-        run: cat engine/firefox/.mozconfig || true
+        run: |
+          grep -q "disable-jemalloc" tools/development/build-gecko.sh
+          grep -q "without-wasm-sandboxed-libraries" tools/development/build-gecko.sh
+          grep -q "python3.12 ./mach" tools/development/build-gecko.sh
+          grep -q "CODE_SIGNING_ALLOWED=NO" tools/release/build-app.sh
+          echo "All patches verified in build scripts"
 
       - name: Build idevice dependencies
         if: steps.check.outputs.skip == 'false'
