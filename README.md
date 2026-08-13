@@ -149,6 +149,18 @@ Build dependencies and the Gecko engine.
 
 To run Reynard, open `Reynard.xcodeproj` in Xcode and build/run it from there.
 
+### Building for jailbroken devices
+
+On libhooker-based jailbreaks (e.g. Taurine), the stock build crashes at launch: jemalloc registers its own malloc zone during dyld initialization (`memory/build/zone.c`), which conflicts with the jailbreak's hook installer (`pspawn_payload-stg2.dylib`) and aborts the process in `free()` before `main()` runs.
+
+To keep the system allocator, build Gecko with jemalloc disabled:
+
+```bash
+REYNARD_DISABLE_JEMALLOC=1 ./tools/development/build-gecko.sh
+```
+
+Then package and install the `Reynard-Jailbroken.ipa` build as usual.
+
 ## Notes
 
 This project initially started out of curiosity. I wanted to see if I could get Gecko to run without the [BrowserEngineKit](https://developer.apple.com/documentation/browserenginekit) framework, so it could be further modified to run on iOS versions as far back as possible. I got it working, and since then, I’ve been focusing on developing engine patches for better UIKit integration, fixing bugs, and turning this into a full, usable browser.

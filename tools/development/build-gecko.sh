@@ -28,6 +28,14 @@ mv "$FIREFOX_DIR/.mozconfig" "$FIREFOX_DIR/.mozconfig.bak"
 	echo "ac_add_options --enable-rust-simd"
 	echo "ac_add_options --enable-lto"
 	echo "ac_add_options --disable-debug"
+	# On libhooker-based jailbreaks (e.g. Taurine), jemalloc's malloc zone
+	# registration (memory/build/zone.c) conflicts with the jailbreak's hook
+	# installer: pspawn_payload-stg2.dylib aborts in free() during dyld
+	# initialization, before main() runs. REYNARD_DISABLE_JEMALLOC=1 keeps
+	# the system allocator so the app can launch on those devices.
+	if [ "${REYNARD_DISABLE_JEMALLOC:-0}" = "1" ]; then
+		echo "ac_add_options --disable-jemalloc"
+	fi
 	echo "ac_add_options --disable-tests"
 } > "$FIREFOX_DIR/.mozconfig"
 
