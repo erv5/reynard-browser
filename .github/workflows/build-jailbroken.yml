@@ -158,6 +158,8 @@ jobs:
           cp dist/Reynard-Jailbroken.ipa "$IPA"
           gh release create "$REL" \
             --repo "${{ github.repository }}" \
-            --title "Reynard $TAG (Jailbroken, no jemalloc)" \
-            --notes "Reynard $TAG jailbroken build with jemalloc disabled (\`--disable-jemalloc\`). Fixes the launch crash on libhooker-based jailbreaks (Taurine, iOS 14) caused by Gecko's malloc zone takeover conflicting with pspawn_payload-stg2.dylib. Install with Filza + AppSync Unified." \
+            --title "Reynard $TAG (jailbroken, no jemalloc)" \
+            --notes "Reynard $TAG rebuilt from source with jemalloc disabled. Fixes the instant crash on launch with libhooker jailbreaks (Taurine etc).
+
+Install with Filza + AppSync Unified." \
             "$IPA"
