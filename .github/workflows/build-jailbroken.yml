@@ -117,7 +117,7 @@ jobs:
           grep -q "disable-jemalloc" tools/development/build-gecko.sh
           grep -q "without-wasm-sandboxed-libraries" tools/development/build-gecko.sh
           grep -q "python3.12 ./mach" tools/development/build-gecko.sh
-          grep -q "CODE_SIGNING_ALLOWED=NO" tools/release/build-app.sh
+          grep -q "CODE_SIGN_IDENTITY=-" tools/release/build-app.sh
           echo "All patches verified in build scripts"
 
       - name: Build idevice dependencies

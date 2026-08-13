@@ -13,8 +13,11 @@
 # 3. build-gecko.sh: invoke mach with python3.12 (mach rejects newer Python).
 # 4. toolchain.configure: relax the minimum macOS SDK to the installed
 #    version when it is older than Gecko's requirement.
-# 5. build-app.sh: archive without code signing. CI runners have no Apple
-#    identity, and create-ipa.sh re-signs everything with ldid anyway.
+# 5. build-app.sh: archive with ad-hoc signing (CODE_SIGN_IDENTITY=-).
+#    CI runners have no Apple identity, and the AddGecko.sh build phase
+#    codesigns XUL/dylibs with whatever identity xcodebuild expands —
+#    ad-hoc signing needs no keychain. create-ipa.sh re-signs everything
+#    with ldid afterwards anyway.
 #
 # Idempotent: safe to run multiple times.
 # Must be run after update-gecko.sh. If invoked from outside the repository
@@ -82,13 +85,13 @@ else:
 PYEOF
 fi
 
-# --- 5. unsigned archive ------------------------------------------------------
+# --- 5. ad-hoc signed archive -------------------------------------------------
 
-if ! grep -q "CODE_SIGNING_ALLOWED" "$BUILD_APP"; then
-	sed -i '' 's|^xcodebuild archive|xcodebuild archive CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM=|' "$BUILD_APP"
-	echo "patched: build-app.sh archives without code signing"
+if ! grep -q "CODE_SIGN_IDENTITY=-" "$BUILD_APP"; then
+	sed -i '' 's|^xcodebuild archive|xcodebuild archive CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=|' "$BUILD_APP"
+	echo "patched: build-app.sh archives with ad-hoc signing"
 else
-	echo "ok: build-app.sh already archives unsigned"
+	echo "ok: build-app.sh already uses ad-hoc signing"
 fi
 
 echo "All jailbreak fixes applied."
