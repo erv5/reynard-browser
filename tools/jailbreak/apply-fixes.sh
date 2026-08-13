@@ -44,7 +44,7 @@ if ! grep -q "disable-jemalloc" "$BUILD_GECKO"; then
 			done = 1
 		}
 	}' "$BUILD_GECKO" > "$BUILD_GECKO.tmp"
-	mv "$BUILD_GECKO.tmp" "$BUILD_GECKO"
+	cat "$BUILD_GECKO.tmp" > "$BUILD_GECKO" && rm "$BUILD_GECKO.tmp"
 	echo "patched: mozconfig gains --disable-jemalloc and --without-wasm-sandboxed-libraries"
 else
 	echo "ok: jemalloc options already present in build-gecko.sh"
