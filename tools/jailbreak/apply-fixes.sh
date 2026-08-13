@@ -13,11 +13,12 @@
 # 3. build-gecko.sh: invoke mach with python3.12 (mach rejects newer Python).
 # 4. toolchain.configure: relax the minimum macOS SDK to the installed
 #    version when it is older than Gecko's requirement.
-# 5. build-app.sh: archive with ad-hoc signing (CODE_SIGN_IDENTITY=-).
-#    CI runners have no Apple identity, and the AddGecko.sh build phase
-#    codesigns XUL/dylibs with whatever identity xcodebuild expands —
-#    ad-hoc signing needs no keychain. create-ipa.sh re-signs everything
-#    with ldid afterwards anyway.
+# 5. build-app.sh: archive with CODE_SIGNING_ALLOWED=NO (CI runners have no
+#    Apple identity or provisioning profiles; create-ipa.sh re-signs with
+#    ldid anyway), and AddGecko.sh: fall back to ad-hoc signing for the
+#    Gecko dylibs in that case — xcodebuild forbids CODE_SIGN_IDENTITY=-
+#    as a build setting on recent SDKs, but codesign -s - from a script
+#    phase is fine.
 #
 # Idempotent: safe to run multiple times.
 # Must be run after update-gecko.sh. If invoked from outside the repository
@@ -85,13 +86,33 @@ else:
 PYEOF
 fi
 
-# --- 5. ad-hoc signed archive -------------------------------------------------
+# --- 5. signing-free archive + ad-hoc fallback in AddGecko.sh -----------------
 
-if ! grep -q "CODE_SIGN_IDENTITY=-" "$BUILD_APP"; then
-	sed -i '' 's|^xcodebuild archive|xcodebuild archive CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=|' "$BUILD_APP"
-	echo "patched: build-app.sh archives with ad-hoc signing"
+if ! grep -q "CODE_SIGNING_ALLOWED" "$BUILD_APP"; then
+	sed -i '' 's|^xcodebuild archive|xcodebuild archive CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM=|' "$BUILD_APP"
+	echo "patched: build-app.sh archives without code signing"
 else
-	echo "ok: build-app.sh already uses ad-hoc signing"
+	echo "ok: build-app.sh already archives unsigned"
+fi
+
+ADD_GECKO="$ROOT_DIR/browser/Scripts/AddGecko.sh"
+if ! grep -q "CODE_SIGNING_ALLOWED" "$ADD_GECKO"; then
+	awk '{
+		print
+		if (!done && $0 ~ /^SIGN_IDENTITY=/) {
+			print ""
+			print "# CODE_SIGNING_ALLOWED=NO leaves EXPANDED_CODE_SIGN_IDENTITY empty;"
+			print "# fall back to ad-hoc signing (create-ipa.sh re-signs with ldid later)."
+			print "if [ \"${CODE_SIGNING_ALLOWED:-YES}\" = \"NO\" ]; then"
+			print "\tSIGN_IDENTITY=\"-\""
+			print "fi"
+			done = 1
+		}
+	}' "$ADD_GECKO" > "$ADD_GECKO.tmp"
+	cat "$ADD_GECKO.tmp" > "$ADD_GECKO" && rm "$ADD_GECKO.tmp"
+	echo "patched: AddGecko.sh falls back to ad-hoc signing when signing is disabled"
+else
+	echo "ok: AddGecko.sh already has ad-hoc fallback"
 fi
 
 echo "All jailbreak fixes applied."
