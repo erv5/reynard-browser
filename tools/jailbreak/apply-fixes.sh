@@ -16,7 +16,7 @@
 # 5. build-app.sh: archive with CODE_SIGNING_ALLOWED=NO (CI runners have no
 #    Apple identity or provisioning profiles; create-ipa.sh re-signs with
 #    ldid anyway), and AddGecko.sh: fall back to ad-hoc signing for the
-#    Gecko dylibs in that case — xcodebuild forbids CODE_SIGN_IDENTITY=-
+#    Gecko dylibs in that case - xcodebuild forbids CODE_SIGN_IDENTITY=-
 #    as a build setting on recent SDKs, but codesign -s - from a script
 #    phase is fine.
 #
